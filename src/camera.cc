@@ -65,9 +65,15 @@ void camera::render(const hittable &world, char *out_pixels, int proc_num,
             write_color(px, pixel_samples_scale * pixel_color);
             px += 3;
         }
+        // ray_iterator objects are destroyed here at end of loop iteration
+        // GSL driver cleanup happens in destructor - should be thread-safe
+        // as each thread has its own ray_iterator instances
     }
 
-    std::clog << "\rDone.                 \n";
+    // OpenMP parallel for automatically has an implicit barrier at the end
+    // All ray_iterator destructors should have completed by now
+    std::clog << "\rDone.                 \n" << std::flush;
+    std::clog << "Render complete, exiting parallel region...\n" << std::flush;
 }
 
 void camera::initialize() {
@@ -125,12 +131,15 @@ color camera::ray_color(ray &r, const hittable &world) const {
     ray dr;
     double cur = 0.0;
     double max = epsilon * 2000;
-    // Use GSL for single black hole, simple integration for multiple black holes
+    // Use GSL for single black hole, choose method for multiple black holes
     ray_iterator ri = (black_holes.size() == 1) 
         ? ray_iterator(black_holes[0].mass, r, black_holes[0].origin, epsilon, true, false)
-        : ray_iterator(black_holes, r, epsilon, true, false);
+        : ray_iterator(black_holes, r, epsilon, true, false, use_gsl_dual);
 
-    while (cur < max) {
+    int step_count = 0;
+    const int max_steps = 2000;  // Safety limit to prevent infinite loops
+    while (cur < max && step_count < max_steps) {
+        step_count++;
         if (debug) {
             std::cout << "CURRENT RAY LEN: " << dr.origin().length() << '\n';
         }
@@ -160,6 +169,12 @@ color camera::ray_color(ray &r, const hittable &world) const {
             }
         }
         cur += epsilon;
+    }
+    
+    // Safety check: if we hit max steps, return background color
+    if (step_count >= max_steps) {
+        // Ray tracing took too long, likely stuck in orbit or near event horizon
+        // Return background color instead of continuing
     }
 
     vec3 unit_direction = unit_vector(r.direction());

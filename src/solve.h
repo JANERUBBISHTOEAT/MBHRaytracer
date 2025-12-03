@@ -24,6 +24,10 @@ struct ray_iterator {
         double rs;
         point3 origin;
     };
+    
+    struct multi_bh_params {
+        std::vector<black_hole> *holes;
+    };
 
     /** BH mass (for single BH mode with GSL) */
     double mass;
@@ -41,6 +45,8 @@ struct ray_iterator {
     bool disable_bh;
     /** Use simple integration for multi-BH */
     bool use_simple_integration;
+    /** Use GSL high-precision integration for multi-BH */
+    bool use_gsl_integration;
 
     /** Convert the state of the iterator to a string for debugging */
     string fmt();
@@ -68,14 +74,21 @@ struct ray_iterator {
      * @param prevent_freedom Used for `tgsl` to stop the ray once it is out of
      * a certain range
      * @param disable_bh Another parameter for `tgsl` which disables distortion
+     * @param use_gsl If true, use GSL Runge-Kutta solver for high precision
      */
     ray_iterator(std::vector<black_hole> holes, ray initial_ray,
-                 double epsilon, bool prevent_freedom, bool disable_bh);
+                 double epsilon, bool prevent_freedom, bool disable_bh,
+                 bool use_gsl = false);
 
     /** Dtor */
     ~ray_iterator() { 
-        if (!use_simple_integration) {
-            gsl_odeiv2_driver_free(m_d); 
+        // Free GSL driver if it was allocated
+        // For single BH: use_simple_integration=false, use_gsl_integration=false, but m_d is allocated
+        // For multi-BH GSL: use_simple_integration=false, use_gsl_integration=true, m_d is allocated
+        // For multi-BH simple: use_simple_integration=true, use_gsl_integration=false, m_d is nullptr
+        if (m_d != nullptr) {
+            gsl_odeiv2_driver_free(m_d);
+            m_d = nullptr;
         }
     }
 
@@ -84,9 +97,12 @@ struct ray_iterator {
     double m_z_rot;
     ray m_r;                 /* Current ray */
     double m_t;              /* alias for current phi */
-    double m_y[2];           /* (u,phi) */
+    double m_y[2];           /* (u,phi) for single BH */
+    double m_state[6];       /* (x,y,z,vx,vy,vz) for multi-BH GSL */
     gsl_odeiv2_system m_sys; /*= {func, jac, 2, &mass}; */
     gsl_odeiv2_driver *m_d;  /* gsl_odeiv2_driver_apply (d, &t, new_phi, y); */
+    gsl_odeiv2_system m_multi_sys; /* For multi-BH GSL */
+    multi_bh_params m_multi_params;
 };
 
 #endif

@@ -18,6 +18,8 @@ class camera {
     bool debug = true;
     /** step size for simulation */
     double epsilon;
+    /** use GSL high-precision for dual black hole mode */
+    bool use_gsl_dual = false;
 
     /**
      * Configures some supplied black hole parameters

@@ -44,6 +44,8 @@ struct args {
     bool time = false;
     /** -1 (use single black hole mode with GSL) */
     bool single_bh = false;
+    /** -G (use GSL high-precision for dual black hole mode) */
+    bool gsl_dual = false;
 };
 
 void help() {
@@ -78,7 +80,9 @@ void help() {
   -s <number of samples>
     default 1
   -1
-    use single black hole mode (GSL solver) instead of dual black hole mode)"
+    use single black hole mode (GSL solver) instead of dual black hole mode
+  -G
+    use GSL high-precision solver for dual black hole mode)"
               << '\n';
 }
 
@@ -96,7 +100,7 @@ bool parse_args(int argc, char *argv[], struct args &as) {
 
     opterr = 0;
 
-    while ((c = getopt(argc, argv, "db:B:e:i:M:p:s:Sc:W:T1")) != -1)
+    while ((c = getopt(argc, argv, "db:B:e:i:M:p:s:Sc:W:T1G")) != -1)
         switch (c) {
         case 'd':
             as.debug = true;
@@ -106,6 +110,9 @@ bool parse_args(int argc, char *argv[], struct args &as) {
             break;
         case '1':
             as.single_bh = true;
+            break;
+        case 'G':
+            as.gsl_dual = true;
             break;
         case 'S':
             as.wait_for_attach = true;
@@ -199,7 +206,8 @@ int main(int argc, char *argv[]) {
                   << "\nmass: " << as.mass << "\nepsilon: " << as.epsilon
                   << "\nwidth: " << as.width << "\ndebug: " << as.debug
                   << "\nsamples: " << as.samples
-                  << "\nmode: " << (as.single_bh ? "single BH (GSL)" : "dual BH (simple integration)") << "\n";
+                  << "\nmode: " << (as.single_bh ? "single BH (GSL)" : 
+                                    (as.gsl_dual ? "dual BH (GSL high-precision)" : "dual BH (simple integration)")) << "\n";
     }
     TickTock tt;
     tt.tick();
@@ -227,11 +235,12 @@ int main(int argc, char *argv[]) {
     cam.aspect_ratio = 16.0 / 9.0;
     cam.image_width = as.width;
     cam.samples_per_pixel = as.samples;
+    cam.use_gsl_dual = as.gsl_dual;
     if (as.single_bh) {
         // Single black hole mode: use GSL solver
         cam.setup_hole(point3(0, 0, as.bh_loc), as.mass, as.epsilon);
     } else {
-        // Dual black hole mode: use simple integration
+        // Dual black hole mode: choose integration method
         double half_sep = as.bh_sep / 2.0;
         cam.setup_hole(point3(-half_sep, 0, as.bh_loc), as.mass, as.epsilon);
         cam.add_hole(point3(half_sep, 0, as.bh_loc), as.mass);
@@ -277,6 +286,7 @@ int main(int argc, char *argv[]) {
     }
     assert(pxs != nullptr);
     cam.render(world, pxs, proc_num, dc.get_core_info(proc_num));
+    std::clog << "After render() call, before image write...\n" << std::flush;
 
 #ifdef IS_MPI
     const int *recvcounts = dc.get_recvcounts();
@@ -287,11 +297,13 @@ int main(int argc, char *argv[]) {
 #endif
 
     if (proc_num == 0) {
+        std::clog << "Writing image to img.jpg..." << std::flush;
         auto out_view = bg::interleaved_view(
             width, height, reinterpret_cast<bg::rgb8_pixel_t *>(pxs),
             width * 3);
 
         bg::write_view("img.jpg", out_view, bg::jpeg_tag());
+        std::clog << " done.\n" << std::flush;
     }
 
     if (as.time) {
