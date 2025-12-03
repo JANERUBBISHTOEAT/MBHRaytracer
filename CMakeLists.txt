@@ -5,7 +5,6 @@ set(ENABLE_LTO True)
 project(Assignment1)
 set(CMAKE_VERBOSE_MAKEFILE True)
 find_package(PkgConfig)
-find_package(Boost 1.86.0)
 #set(ENABLE_OPENMP False)
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ggdb -Wall -Wextra -Werror")
@@ -13,7 +12,6 @@ find_package(Boost 1.86.0)
 
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${Boost_INCLUDE_DIRS}")
 set(CMAKE_CXX_COMPILER "g++")
 if(ENABLE_OPENMP)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -57,21 +55,8 @@ if(ENABLE_LTO STREQUAL True AND (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BU
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-pkg_check_modules(GSL REQUIRED gsl)
 add_executable(main src/main.cc src/camera.cc src/interval.cc src/solve.cc src/decomp.cc src/img.cc src/img_data.cc)
-add_executable(tgsl src/gsl.cc src/solve.cc)
-#target_link_libraries(main gslcblas gsl)
-target_link_libraries(main ${GSL_LIBRARIES})
-target_include_directories(main PUBLIC ${GSL_INCLUDE_DIRS})
-target_compile_options(main PUBLIC ${GSL_CFLAGS_OTHER})
-
-target_link_libraries(tgsl ${GSL_LIBRARIES})
-target_include_directories(tgsl PUBLIC ${GSL_INCLUDE_DIRS})
-target_compile_options(tgsl PUBLIC ${GSL_CFLAGS_OTHER})
-#target_link_libraries(tgsl gslcblas)
-#target_link_libraries(tgsl gsl)
 target_link_libraries(main jpeg)
-#target_link_libraries(main boost_gil_jpeg_extension)
 
 if(ENABLE_COV)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
