@@ -6,7 +6,8 @@
 #include "img.h"
 #include "sphere.h"
 #include "ticktock.h"
-#include <fstream>
+#include <boost/gil.hpp>
+#include <boost/gil/extension/io/jpeg.hpp>
 #ifdef IS_MPI
 #include <mpi.h>
 #endif
@@ -14,6 +15,7 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+namespace bg = boost::gil;
 
 struct args {
     /** -i img_name */
@@ -268,9 +270,11 @@ int main(int argc, char *argv[]) {
 #endif
 
     if (proc_num == 0) {
-        std::ofstream out("img.ppm", std::ios::binary);
-        out << "P6\n" << width << " " << height << "\n255\n";
-        out.write(pxs, width * height * 3);
+        auto out_view = bg::interleaved_view(
+            width, height, reinterpret_cast<bg::rgb8_pixel_t *>(pxs),
+            width * 3);
+
+        bg::write_view("img.jpg", out_view, bg::jpeg_tag());
     }
 
     if (as.time) {

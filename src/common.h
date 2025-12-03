@@ -11,10 +11,10 @@
 #include <sstream>
 #include <string>
 
-#include <optional>
+#include <boost/optional.hpp>
 using std::make_shared;
-using std::nullopt;
-using std::optional;
+using boost::none;
+using boost::optional;
 using std::shared_ptr;
 
 // Constants

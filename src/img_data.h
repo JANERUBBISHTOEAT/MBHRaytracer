@@ -1,8 +1,10 @@
 #ifndef IMG_DATA_H
 #define IMG_DATA_H
 #include "color.h"
-#include <cstdio>
-#include <vector>
+#include <boost/gil.hpp>
+#include <boost/gil/extension/io/jpeg.hpp>
+
+namespace bg = boost::gil;
 
 /**
  * A class which manages an in-memory loaded image
@@ -22,7 +24,8 @@ class img_data {
     unsigned get_height() const { return height; }
 
   private:
-    std::vector<uint8_t> raw_data;
+    uint8_t *raw_data;
+    bg::rgb8_image_t jpeg_data;
     unsigned width;
     unsigned height;
     kind m_kind;
@@ -34,7 +37,6 @@ class img_data {
         return (y * get_width() + x) * 3;
     }
     void parse_ppm(const char *filename);
-    void parse_jpeg(const char *filename);
 
   public:
     /** A helper function which reads the pixel value at a particular x and y
