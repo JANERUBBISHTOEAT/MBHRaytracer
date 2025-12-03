@@ -42,6 +42,8 @@ struct args {
     int cores = 0;
     /** -T (output timing information) */
     bool time = false;
+    /** -1 (use single black hole mode with GSL) */
+    bool single_bh = false;
 };
 
 void help() {
@@ -74,7 +76,9 @@ void help() {
   -S
     wait for GDB to attach before initializing mpi..
   -s <number of samples>
-    default 1)"
+    default 1
+  -1
+    use single black hole mode (GSL solver) instead of dual black hole mode)"
               << '\n';
 }
 
@@ -92,13 +96,16 @@ bool parse_args(int argc, char *argv[], struct args &as) {
 
     opterr = 0;
 
-    while ((c = getopt(argc, argv, "db:B:e:i:M:p:s:Sc:W:T")) != -1)
+    while ((c = getopt(argc, argv, "db:B:e:i:M:p:s:Sc:W:T1")) != -1)
         switch (c) {
         case 'd':
             as.debug = true;
             break;
         case 'T':
             as.time = true;
+            break;
+        case '1':
+            as.single_bh = true;
             break;
         case 'S':
             as.wait_for_attach = true;
@@ -184,11 +191,15 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        std::cerr << "Image name: " << as.img_name << "\nbh_loc: " << as.bh_loc
-                  << "\nbh_sep: " << as.bh_sep << "\nbg_loc: " << as.bg_loc
+        std::cerr << "Image name: " << as.img_name << "\nbh_loc: " << as.bh_loc;
+        if (!as.single_bh) {
+            std::cerr << "\nbh_sep: " << as.bh_sep;
+        }
+        std::cerr << "\nbg_loc: " << as.bg_loc
                   << "\nmass: " << as.mass << "\nepsilon: " << as.epsilon
                   << "\nwidth: " << as.width << "\ndebug: " << as.debug
-                  << "\nsamples: " << as.samples << "\n";
+                  << "\nsamples: " << as.samples
+                  << "\nmode: " << (as.single_bh ? "single BH (GSL)" : "dual BH (simple integration)") << "\n";
     }
     TickTock tt;
     tt.tick();
@@ -216,9 +227,15 @@ int main(int argc, char *argv[]) {
     cam.aspect_ratio = 16.0 / 9.0;
     cam.image_width = as.width;
     cam.samples_per_pixel = as.samples;
-    double half_sep = as.bh_sep / 2.0;
-    cam.setup_hole(point3(-half_sep, 0, as.bh_loc), as.mass, as.epsilon);
-    cam.add_hole(point3(half_sep, 0, as.bh_loc), as.mass);
+    if (as.single_bh) {
+        // Single black hole mode: use GSL solver
+        cam.setup_hole(point3(0, 0, as.bh_loc), as.mass, as.epsilon);
+    } else {
+        // Dual black hole mode: use simple integration
+        double half_sep = as.bh_sep / 2.0;
+        cam.setup_hole(point3(-half_sep, 0, as.bh_loc), as.mass, as.epsilon);
+        cam.add_hole(point3(half_sep, 0, as.bh_loc), as.mass);
+    }
     cam.set_debug(as.debug);
     int width = as.width;
     int height = int(width / cam.aspect_ratio);
