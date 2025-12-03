@@ -19,6 +19,11 @@ enum solve_ret {
 /** A struct which owns a ray as it travels through space, applying
  * gravitational distortion */
 struct ray_iterator {
+    enum class Mode {
+        SingleGsl,
+        MultiGsl,
+    };
+
     struct black_hole {
         double mass;
         double rs;
@@ -39,8 +44,8 @@ struct ray_iterator {
     bool freedom;
     /** Debugging parameter used for `tgsl` */
     bool disable_bh;
-    /** Use simple integration for multi-BH */
-    bool use_simple_integration;
+    /** Solver mode */
+    Mode mode;
 
     /** Convert the state of the iterator to a string for debugging */
     string fmt();
@@ -61,7 +66,7 @@ struct ray_iterator {
                  bool prevent_freedom, bool disable_bh);
 
     /**
-     * Multi-black hole constructor using simple integration
+     * Multi-black hole constructor using the GSL solver
      * @param holes The black holes in the scene
      * @param initial_ray The initial light ray which will become distorted
      * @param epsilon The epsilon of the simulation
@@ -73,9 +78,9 @@ struct ray_iterator {
                  double epsilon, bool prevent_freedom, bool disable_bh);
 
     /** Dtor */
-    ~ray_iterator() { 
-        if (!use_simple_integration) {
-            gsl_odeiv2_driver_free(m_d); 
+    ~ray_iterator() {
+        if (m_d != nullptr) {
+            gsl_odeiv2_driver_free(m_d);
         }
     }
 
@@ -85,8 +90,12 @@ struct ray_iterator {
     ray m_r;                 /* Current ray */
     double m_t;              /* alias for current phi */
     double m_y[2];           /* (u,phi) */
+    double m_state[6];       /* (x, y, z, dx, dy, dz) */
+    struct multi_params {
+        std::vector<black_hole> *holes;
+    } m_multi_params;
     gsl_odeiv2_system m_sys; /*= {func, jac, 2, &mass}; */
-    gsl_odeiv2_driver *m_d;  /* gsl_odeiv2_driver_apply (d, &t, new_phi, y); */
+    gsl_odeiv2_driver *m_d = nullptr; /* gsl_odeiv2_driver_apply (d, &t, new_phi, y); */
 };
 
 #endif

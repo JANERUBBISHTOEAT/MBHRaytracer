@@ -30,6 +30,36 @@ static int jac(double t, const double y[], double *dfdy, double dfdt[],
     return GSL_SUCCESS;
 }
 
+static int multi_func(double t, const double y[], double f[], void *params) {
+    (void)(t);
+    auto *p = static_cast<ray_iterator::multi_params *>(params);
+
+    point3 pos(y[0], y[1], y[2]);
+    vec3 vel(y[3], y[4], y[5]);
+    vec3 accel(0, 0, 0);
+
+    for (const auto &bh : *p->holes) {
+        vec3 rel = pos - bh.origin;
+        double dist = rel.length();
+
+        if (dist <= bh.rs) {
+            dist = bh.rs;
+        }
+
+        double inv_dist_cubed = 1.0 / (dist * dist * dist);
+        accel += (-1 * bh.mass * rel) * inv_dist_cubed;
+    }
+
+    f[0] = vel.x();
+    f[1] = vel.y();
+    f[2] = vel.z();
+    f[3] = accel.x();
+    f[4] = accel.y();
+    f[5] = accel.z();
+
+    return GSL_SUCCESS;
+}
+
 static double find_z_rot(point3 start) {
     double y = start.y();
     double x = start.x();
@@ -51,50 +81,48 @@ point3 ray_iterator::transfer_out(point3 pt) {
 
 string ray_iterator::fmt() {
     stringstream s;
-    if (use_simple_integration) {
-        s << "m_r: " << m_r.fmt() << "\n";
-        s << "bh count: " << holes.size();
-    } else {
+    if (mode == Mode::SingleGsl) {
         s << "m_r: " << m_r.fmt() << "\nu: " << m_y[0] << "\nu': " << m_y[1]
           << "\nm_t:" << m_t;
+    } else {
+        s << "m_r: " << m_r.fmt() << "\nm_t:" << m_t;
+        s << "\nbh count: " << holes.size();
     }
     return s.str();
 }
 
 solve_ret ray_iterator::iter(ray *r) {
-    if (use_simple_integration) {
-        // Simple numerical integration for multiple black holes
-        point3 pos = m_r.at(0);
-        vec3 dir = unit_vector(m_r.direction());
+    if (mode == Mode::MultiGsl) {
+        double new_t = m_t + epsilon;
 
-        if (!disable_bh) {
-            vec3 total_accel(0, 0, 0);
-            for (const auto &bh : holes) {
-                vec3 rel = pos - bh.origin;
-                double dist = rel.length();
+        int status = gsl_odeiv2_driver_apply(m_d, &m_t, new_t, m_state);
 
-                if (dist <= bh.rs) {
-                    return S_SUCC;
-                }
-
-                if (dist <= 0) {
-                    return S_ERROR;
-                }
-
-                double inv_dist_cubed = 1.0 / (dist * dist * dist);
-                total_accel += (-1 * bh.mass * rel) * inv_dist_cubed;
-            }
-            dir = unit_vector(dir + total_accel * epsilon);
+        if (status != GSL_SUCCESS) {
+            fprintf(stderr, "GSL error, return value=%d\n", status);
+            return S_ERROR;
         }
 
-        point3 next_pos = pos + dir * epsilon;
+        point3 pos(m_state[0], m_state[1], m_state[2]);
 
-        if (!freedom && next_pos.length() > 200) {
+        if (!freedom && pos.length() > 200) {
             fprintf(stderr, "freedom denied\n");
             return S_ERROR;
         }
 
-        m_r = ray(next_pos, dir);
+        for (const auto &bh : holes) {
+            double dist = (pos - bh.origin).length();
+            if (dist <= bh.rs) {
+                return S_SUCC;
+            }
+        }
+
+        vec3 dir(m_state[3], m_state[4], m_state[5]);
+        dir = unit_vector(dir);
+        m_state[3] = dir.x();
+        m_state[4] = dir.y();
+        m_state[5] = dir.z();
+
+        m_r = ray(pos, dir);
         *r = m_r;
         return S_GOOD;
     }
@@ -168,7 +196,7 @@ ray_iterator::ray_iterator(double mass, ray initial_ray, point3 origin,
                            double epsilon, bool prevent_freedom,
                            bool disable_bh)
     : mass(mass), origin(origin), epsilon(epsilon), freedom(prevent_freedom),
-      disable_bh(disable_bh), use_simple_integration(false) {
+      disable_bh(disable_bh), mode(Mode::SingleGsl) {
     point3 start = initial_ray.origin() - origin;
     // cannot start a light ray at the center of a black hole.
     assert(start.length() > 0);
@@ -230,11 +258,25 @@ ray_iterator::ray_iterator(std::vector<black_hole> holes, ray initial_ray,
                            double epsilon, bool prevent_freedom,
                            bool disable_bh)
     : holes(std::move(holes)), epsilon(epsilon), freedom(prevent_freedom),
-      disable_bh(disable_bh), use_simple_integration(true) {
-    m_r = ray(initial_ray.origin(), unit_vector(initial_ray.direction()));
+      disable_bh(disable_bh), mode(Mode::MultiGsl) {
+    vec3 initial_dir = unit_vector(initial_ray.direction());
+    m_r = ray(initial_ray.origin(), initial_dir);
 
     double G = 6.6743;
     for (auto &hole : this->holes) {
         hole.rs = 7 * G * hole.mass / 10;
     }
+
+    m_state[0] = m_r.origin().x();
+    m_state[1] = m_r.origin().y();
+    m_state[2] = m_r.origin().z();
+    m_state[3] = initial_dir.x();
+    m_state[4] = initial_dir.y();
+    m_state[5] = initial_dir.z();
+
+    m_multi_params.holes = &this->holes;
+    m_sys = {multi_func, nullptr, 6, &m_multi_params};
+    m_d = gsl_odeiv2_driver_alloc_y_new(&m_sys, gsl_odeiv2_step_rkf45, 1e-6,
+                                        1e-6, 0.0);
+    m_t = 0.0;
 }
