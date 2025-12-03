@@ -6,8 +6,7 @@
 #include "img.h"
 #include "sphere.h"
 #include "ticktock.h"
-#include <boost/gil.hpp>
-#include <boost/gil/extension/io/jpeg.hpp>
+#include <fstream>
 #ifdef IS_MPI
 #include <mpi.h>
 #endif
@@ -15,13 +14,14 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
-namespace bg = boost::gil;
 
 struct args {
     /** -i img_name */
     string img_name = "../data/squares.jpg";
     /** -b black hole loc */
     double bh_loc = -200.0;
+    /** -p black hole horizontal separation */
+    double bh_sep = 200.0;
     /** -B background loc */
     double bg_loc = -500.0;
     /** -M mass */
@@ -55,6 +55,8 @@ void help() {
     default ../data/squares.jpg
   -b <black hole loc>
     default -400
+  -p <black hole separation>
+    default 200
   -B <background loc>
     default -500
   -M <mass>
@@ -88,7 +90,7 @@ bool parse_args(int argc, char *argv[], struct args &as) {
 
     opterr = 0;
 
-    while ((c = getopt(argc, argv, "db:B:e:i:M:s:Sc:W:T")) != -1)
+    while ((c = getopt(argc, argv, "db:B:e:i:M:p:s:Sc:W:T")) != -1)
         switch (c) {
         case 'd':
             as.debug = true;
@@ -101,6 +103,9 @@ bool parse_args(int argc, char *argv[], struct args &as) {
             break;
         case 'b':
             as.bh_loc = atof(optarg);
+            break;
+        case 'p':
+            as.bh_sep = atof(optarg);
             break;
         case 's':
             as.samples = atoi(optarg);
@@ -126,6 +131,7 @@ bool parse_args(int argc, char *argv[], struct args &as) {
         case '?':
             if (optopt == 'c' || optopt == 'b' || optopt == 'B' ||
                 optopt == 'M' || optopt == 'e' || optopt == 's' ||
+                optopt == 'p' ||
                 optopt == 'i') {
                 fprintf(stderr, "Option -%c requires an argument.\n", optopt);
             } else if (isprint(optopt))
@@ -177,10 +183,10 @@ int main(int argc, char *argv[]) {
         }
 
         std::cerr << "Image name: " << as.img_name << "\nbh_loc: " << as.bh_loc
-                  << "\nbg_loc: " << as.bg_loc << "\nmass: " << as.mass
-                  << "\nepsilon: " << as.epsilon << "\nwidth: " << as.width
-                  << "\ndebug: " << as.debug << "\nsamples: " << as.samples
-                  << "\n";
+                  << "\nbh_sep: " << as.bh_sep << "\nbg_loc: " << as.bg_loc
+                  << "\nmass: " << as.mass << "\nepsilon: " << as.epsilon
+                  << "\nwidth: " << as.width << "\ndebug: " << as.debug
+                  << "\nsamples: " << as.samples << "\n";
     }
     TickTock tt;
     tt.tick();
@@ -208,7 +214,9 @@ int main(int argc, char *argv[]) {
     cam.aspect_ratio = 16.0 / 9.0;
     cam.image_width = as.width;
     cam.samples_per_pixel = as.samples;
-    cam.setup_hole(point3(0, 0, as.bh_loc), as.mass, as.epsilon);
+    double half_sep = as.bh_sep / 2.0;
+    cam.setup_hole(point3(-half_sep, 0, as.bh_loc), as.mass, as.epsilon);
+    cam.add_hole(point3(half_sep, 0, as.bh_loc), as.mass);
     cam.set_debug(as.debug);
     int width = as.width;
     int height = int(width / cam.aspect_ratio);
@@ -260,11 +268,9 @@ int main(int argc, char *argv[]) {
 #endif
 
     if (proc_num == 0) {
-        auto out_view = bg::interleaved_view(
-            width, height, reinterpret_cast<bg::rgb8_pixel_t *>(pxs),
-            width * 3);
-
-        bg::write_view("img.jpg", out_view, bg::jpeg_tag());
+        std::ofstream out("img.ppm", std::ios::binary);
+        out << "P6\n" << width << " " << height << "\n255\n";
+        out.write(pxs, width * height * 3);
     }
 
     if (as.time) {

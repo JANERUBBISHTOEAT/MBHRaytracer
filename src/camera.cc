@@ -1,16 +1,19 @@
 #include "camera.h"
 #include "hittable.h"
 #include "solve.h"
-#include <gsl/gsl_odeiv2.h>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 #include "decomp.h"
 
 void camera::setup_hole(point3 o, double M, double epsilon) {
-    this->bh_origin = o;
-    this->bh_mass = M;
+    black_holes.clear();
+    black_holes.push_back({M, 0.0, o});
     this->epsilon = epsilon;
+}
+
+void camera::add_hole(point3 o, double M) {
+    black_holes.push_back({M, 0.0, o});
 }
 
 void camera::debug_ray(const hittable &world, int i, int j) {
@@ -121,7 +124,7 @@ color camera::ray_color(ray &r, const hittable &world) const {
     ray dr;
     double cur = 0.0;
     double max = epsilon * 2000;
-    ray_iterator ri(bh_mass, r, bh_origin, epsilon, true, false);
+    ray_iterator ri(black_holes, r, epsilon, true, false);
 
     while (cur < max) {
         if (debug) {

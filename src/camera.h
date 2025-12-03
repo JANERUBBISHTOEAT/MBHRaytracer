@@ -2,6 +2,7 @@
 #define CAMERA_H
 
 #include "hittable.h"
+#include "solve.h"
 
 class camera {
   public:
@@ -11,12 +12,10 @@ class camera {
     int image_width = 100;
     /** Count of random samples for each pixel */
     int samples_per_pixel = 1;
-    /** Origin of the black hole */
-    point3 bh_origin;
+    /** Black hole definitions */
+    std::vector<ray_iterator::black_hole> black_holes;
     /** Enable extra debug printing */
     bool debug = true;
-    /** Mass of the black hole */
-    double bh_mass;
     /** step size for simulation */
     double epsilon;
 
@@ -28,6 +27,11 @@ class camera {
      * @param epsilon simulation step size
      */
     void setup_hole(point3 o, double M, double epsilon);
+
+    /**
+     * Adds an additional black hole to the scene
+     */
+    void add_hole(point3 o, double M);
 
     /** Enable debugging */
     void set_debug(bool d) { debug = d; }
