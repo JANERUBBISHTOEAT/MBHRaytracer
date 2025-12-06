@@ -84,6 +84,11 @@ struct ray_iterator {
         }
     }
 
+    /** Parameters for multi-black hole GSL solver */
+    struct multi_params {
+        std::vector<black_hole> *holes;
+    };
+
   private:
     point3 transfer_out(point3 pt);
     double m_z_rot;
@@ -91,9 +96,7 @@ struct ray_iterator {
     double m_t;              /* alias for current phi */
     double m_y[2];           /* (u,phi) */
     double m_state[6];       /* (x, y, z, dx, dy, dz) */
-    struct multi_params {
-        std::vector<black_hole> *holes;
-    } m_multi_params;
+    multi_params m_multi_params;
     gsl_odeiv2_system m_sys; /*= {func, jac, 2, &mass}; */
     gsl_odeiv2_driver *m_d = nullptr; /* gsl_odeiv2_driver_apply (d, &t, new_phi, y); */
 };
