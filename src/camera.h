@@ -4,6 +4,15 @@
 #include "hittable.h"
 #include "solve.h"
 
+// Rays that miss BG
+// DEBUG: returns blue gradient (0,0,0)
+// RELEASE: returns black - hide the problem :(
+#define DEBUG 0
+#define RELEASE 1
+#ifndef MISSED_RAY_COLOR
+#define MISSED_RAY_COLOR DEBUG
+#endif
+
 class camera {
   public:
     /** Ratio of image width/height */

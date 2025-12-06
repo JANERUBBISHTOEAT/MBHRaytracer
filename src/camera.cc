@@ -162,10 +162,17 @@ color camera::ray_color(ray &r, const hittable &world) const {
         cur += epsilon;
     }
 
+#if MISSED_RAY_COLOR == RELEASE
+    // Return black for rays that don't hit anything (debug mode)
+    return color(0, 0, 0);
+#elif MISSED_RAY_COLOR == DEBUG
+    // Return blue gradient for rays that don't hit anything (release mode)
     vec3 unit_direction = unit_vector(r.direction());
     auto a = 0.5 * (unit_direction.y() + 1.0);
     color c = (1.0 - a) * color(1.0, 1.0, 1.0) + a * color(0.5, 0.7, 1.0);
-
     assert(c.x() < 256 && c.y() < 256 && c.z() < 256);
     return c;
+#else
+    #error "MISSED_RAY_COLOR must be either DEBUG or RELEASE"
+#endif
 }
