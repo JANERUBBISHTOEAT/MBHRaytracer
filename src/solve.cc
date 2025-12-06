@@ -93,6 +93,89 @@ string ray_iterator::fmt() {
 
 solve_ret ray_iterator::iter(ray *r) {
     if (mode == Mode::MultiGsl) {
+        point3 pos(m_state[0], m_state[1], m_state[2]);
+        vec3 vel(m_state[3], m_state[4], m_state[5]);
+
+        // Check if we're close to any black hole (within threshold)
+        // If so, use Schwarzschild-corrected acceleration
+        const double schwarz_threshold_factor = 10.0;
+        bool use_schwarz_correction = false;
+        double schwarz_correction_factor = 1.0;
+        
+        for (const auto &bh : holes) {
+            double dist = (pos - bh.origin).length();
+            if (dist <= bh.rs) {
+                return S_SUCC;
+            }
+            // Check if within Schwarzschild threshold
+            if (dist < schwarz_threshold_factor * bh.rs) {
+                // Apply Schwarzschild correction: a_schwarz ≈ a_newton * (1 + 3*rs/r)
+                // This is a first-order correction for weak fields
+                double correction = 1.0 + 3.0 * bh.rs / dist;
+                schwarz_correction_factor *= correction;
+                use_schwarz_correction = true;
+            }
+        }
+
+        // Use modified multi_func that applies Schwarzschild correction
+        if (use_schwarz_correction) {
+            // Manually compute acceleration with Schwarzschild correction
+            vec3 accel(0, 0, 0);
+            for (const auto &bh : holes) {
+                vec3 rel = pos - bh.origin;
+                double dist = rel.length();
+                
+                if (dist <= bh.rs) {
+                    dist = bh.rs;
+                }
+                
+                double inv_dist_cubed = 1.0 / (dist * dist * dist);
+                double correction = 1.0;
+                
+                // Apply Schwarzschild correction if close
+                if (dist < schwarz_threshold_factor * bh.rs) {
+                    correction = 1.0 + 3.0 * bh.rs / dist;
+                }
+                
+                accel += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+            }
+            
+            // Update state using Euler method with corrected acceleration
+            point3 new_pos = pos + vel * epsilon;
+            vec3 new_vel = vel + accel * epsilon;
+            
+            // Normalize velocity direction (light speed is constant)
+            new_vel = unit_vector(new_vel);
+            
+            // Update state
+            m_state[0] = new_pos.x();
+            m_state[1] = new_pos.y();
+            m_state[2] = new_pos.z();
+            m_state[3] = new_vel.x();
+            m_state[4] = new_vel.y();
+            m_state[5] = new_vel.z();
+            m_t += epsilon;
+            
+            pos = new_pos;
+            
+            if (!freedom && pos.length() > 200) {
+                fprintf(stderr, "freedom denied\n");
+                return S_ERROR;
+            }
+            
+            for (const auto &bh : holes) {
+                double dist = (pos - bh.origin).length();
+                if (dist <= bh.rs) {
+                    return S_SUCC;
+                }
+            }
+            
+            m_r = ray(pos, new_vel);
+            *r = m_r;
+            return S_GOOD;
+        }
+
+        // Otherwise, use Newtonian method (original code)
         double new_t = m_t + epsilon;
 
         int status = gsl_odeiv2_driver_apply(m_d, &m_t, new_t, m_state);
@@ -102,7 +185,7 @@ solve_ret ray_iterator::iter(ray *r) {
             return S_ERROR;
         }
 
-        point3 pos(m_state[0], m_state[1], m_state[2]);
+        pos = point3(m_state[0], m_state[1], m_state[2]);
 
         if (!freedom && pos.length() > 200) {
             fprintf(stderr, "freedom denied\n");
