@@ -77,6 +77,12 @@ struct ray_iterator {
     ray_iterator(std::vector<black_hole> holes, ray initial_ray,
                  double epsilon, bool prevent_freedom, bool disable_bh);
 
+    /** Move constructor */
+    ray_iterator(ray_iterator &&other) noexcept;
+
+    /** Move assignment operator */
+    ray_iterator &operator=(ray_iterator &&other) noexcept;
+
     /** Dtor */
     ~ray_iterator() {
         if (m_d != nullptr) {

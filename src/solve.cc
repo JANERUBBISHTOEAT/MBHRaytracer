@@ -363,3 +363,83 @@ ray_iterator::ray_iterator(std::vector<black_hole> holes, ray initial_ray,
                                         1e-6, 0.0);
     m_t = 0.0;
 }
+
+// Move constructor
+ray_iterator::ray_iterator(ray_iterator &&other) noexcept
+    : mass(other.mass), rs(other.rs), origin(other.origin),
+      holes(std::move(other.holes)), epsilon(other.epsilon),
+      freedom(other.freedom), disable_bh(other.disable_bh),
+      mode(other.mode), m_z_rot(other.m_z_rot), m_r(other.m_r),
+      m_t(other.m_t), m_multi_params(other.m_multi_params), m_d(nullptr) {
+    // Copy state arrays
+    for (int i = 0; i < 2; i++) {
+        m_y[i] = other.m_y[i];
+    }
+    for (int i = 0; i < 6; i++) {
+        m_state[i] = other.m_state[i];
+    }
+
+    // Reinitialize pointers to point to this object's members
+    // and recreate GSL driver (since it stores pointers to m_sys)
+    if (mode == Mode::SingleGsl) {
+        m_sys = {func, jac, 2, &this->mass};
+        m_d = gsl_odeiv2_driver_alloc_y_new(&m_sys, gsl_odeiv2_step_rk4, 1e-4,
+                                            1e-4, 0.0);
+    } else if (mode == Mode::MultiGsl) {
+        m_multi_params.holes = &this->holes;
+        m_sys = {multi_func, nullptr, 6, &m_multi_params};
+        m_d = gsl_odeiv2_driver_alloc_y_new(&m_sys, gsl_odeiv2_step_rkf45, 1e-6,
+                                            1e-6, 0.0);
+    }
+
+    // Let other's destructor handle its GSL driver
+}
+
+// Move assignment operator
+ray_iterator &ray_iterator::operator=(ray_iterator &&other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+
+    // Free existing GSL driver
+    if (m_d != nullptr) {
+        gsl_odeiv2_driver_free(m_d);
+        m_d = nullptr;
+    }
+
+    // Move all members
+    mass = other.mass;
+    rs = other.rs;
+    origin = other.origin;
+    holes = std::move(other.holes);
+    epsilon = other.epsilon;
+    freedom = other.freedom;
+    disable_bh = other.disable_bh;
+    mode = other.mode;
+    m_z_rot = other.m_z_rot;
+    m_r = other.m_r;
+    m_t = other.m_t;
+    m_multi_params = other.m_multi_params;
+
+    // Copy state arrays
+    for (int i = 0; i < 2; i++) {
+        m_y[i] = other.m_y[i];
+    }
+    for (int i = 0; i < 6; i++) {
+        m_state[i] = other.m_state[i];
+    }
+
+    // Reinitialize pointers to point to this object's members
+    if (mode == Mode::SingleGsl) {
+        m_sys = {func, jac, 2, &this->mass};
+        m_d = gsl_odeiv2_driver_alloc_y_new(&m_sys, gsl_odeiv2_step_rk4, 1e-4,
+                                            1e-4, 0.0);
+    } else if (mode == Mode::MultiGsl) {
+        m_multi_params.holes = &this->holes;
+        m_sys = {multi_func, nullptr, 6, &m_multi_params};
+        m_d = gsl_odeiv2_driver_alloc_y_new(&m_sys, gsl_odeiv2_step_rkf45, 1e-6,
+                                            1e-6, 0.0);
+    }
+
+    return *this;
+}
