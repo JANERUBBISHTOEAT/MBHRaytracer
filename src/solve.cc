@@ -119,8 +119,9 @@ solve_ret ray_iterator::iter(ray *r) {
 
         // Use modified multi_func that applies Schwarzschild correction
         if (use_schwarz_correction) {
-            // Manually compute acceleration with Schwarzschild correction
-            vec3 accel(0, 0, 0);
+            // Use RK4 method for better accuracy in strong field region
+            // k1
+            vec3 accel1(0, 0, 0);
             for (const auto &bh : holes) {
                 vec3 rel = pos - bh.origin;
                 double dist = rel.length();
@@ -132,17 +133,89 @@ solve_ret ray_iterator::iter(ray *r) {
                 double inv_dist_cubed = 1.0 / (dist * dist * dist);
                 double correction = 1.0;
                 
-                // Apply Schwarzschild correction if close
                 if (dist < schwarz_threshold_factor * bh.rs) {
                     correction = 1.0 + 3.0 * bh.rs / dist;
                 }
                 
-                accel += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+                accel1 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
             }
             
-            // Update state using Euler method with corrected acceleration
+            // k2 (midpoint)
+            point3 pos2 = pos + vel * (epsilon * 0.5);
+            vec3 vel2 = vel + accel1 * (epsilon * 0.5);
+            vel2 = unit_vector(vel2); // Light speed is constant
+            
+            vec3 accel2(0, 0, 0);
+            for (const auto &bh : holes) {
+                vec3 rel = pos2 - bh.origin;
+                double dist = rel.length();
+                
+                if (dist <= bh.rs) {
+                    dist = bh.rs;
+                }
+                
+                double inv_dist_cubed = 1.0 / (dist * dist * dist);
+                double correction = 1.0;
+                
+                if (dist < schwarz_threshold_factor * bh.rs) {
+                    correction = 1.0 + 3.0 * bh.rs / dist;
+                }
+                
+                accel2 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+            }
+            
+            // k3 (midpoint with k2)
+            point3 pos3 = pos + vel2 * (epsilon * 0.5);
+            vec3 vel3 = vel + accel2 * (epsilon * 0.5);
+            vel3 = unit_vector(vel3);
+            
+            vec3 accel3(0, 0, 0);
+            for (const auto &bh : holes) {
+                vec3 rel = pos3 - bh.origin;
+                double dist = rel.length();
+                
+                if (dist <= bh.rs) {
+                    dist = bh.rs;
+                }
+                
+                double inv_dist_cubed = 1.0 / (dist * dist * dist);
+                double correction = 1.0;
+                
+                if (dist < schwarz_threshold_factor * bh.rs) {
+                    correction = 1.0 + 3.0 * bh.rs / dist;
+                }
+                
+                accel3 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+            }
+            
+            // k4 (endpoint with k3)
+            point3 pos4 = pos + vel3 * epsilon;
+            vec3 vel4 = vel + accel3 * epsilon;
+            vel4 = unit_vector(vel4);
+            
+            vec3 accel4(0, 0, 0);
+            for (const auto &bh : holes) {
+                vec3 rel = pos4 - bh.origin;
+                double dist = rel.length();
+                
+                if (dist <= bh.rs) {
+                    dist = bh.rs;
+                }
+                
+                double inv_dist_cubed = 1.0 / (dist * dist * dist);
+                double correction = 1.0;
+                
+                if (dist < schwarz_threshold_factor * bh.rs) {
+                    correction = 1.0 + 3.0 * bh.rs / dist;
+                }
+                
+                accel4 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+            }
+            
+            // RK4 weighted average
+            vec3 avg_accel = (accel1 + 2.0 * accel2 + 2.0 * accel3 + accel4) / 6.0;
             point3 new_pos = pos + vel * epsilon;
-            vec3 new_vel = vel + accel * epsilon;
+            vec3 new_vel = vel + avg_accel * epsilon;
             
             // Normalize velocity direction (light speed is constant)
             new_vel = unit_vector(new_vel);
