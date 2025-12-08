@@ -37,6 +37,9 @@ static int multi_func(double t, const double y[], double f[], void *params) {
     point3 pos(y[0], y[1], y[2]);
     vec3 vel(y[3], y[4], y[5]);
     vec3 accel(0, 0, 0);
+    
+    // Gravitational constant (same as used in rs calculation)
+    const double G = 6.6743;
 
     for (const auto &bh : *p->holes) {
         vec3 rel = pos - bh.origin;
@@ -46,8 +49,10 @@ static int multi_func(double t, const double y[], double f[], void *params) {
             dist = bh.rs;
         }
 
+        // Newtonian gravity: a = -G * M / r^2 * r_hat
+        // where r_hat = rel / dist is the unit vector
         double inv_dist_cubed = 1.0 / (dist * dist * dist);
-        accel += (-1 * bh.mass * rel) * inv_dist_cubed;
+        accel += (-G * bh.mass * rel) * inv_dist_cubed;
     }
 
     f[0] = vel.x();
@@ -98,13 +103,25 @@ solve_ret ray_iterator::iter(ray *r) {
 
         // Check if we're close to any black hole (within threshold)
         // If so, use Schwarzschild-corrected acceleration
-        const double schwarz_threshold_factor = 10.0;
+        // Use a smaller threshold to avoid issues with large masses
+        // For larger masses, use even smaller threshold to reduce RK4 usage
+        double max_rs = 0.0;
+        for (const auto &bh : holes) {
+            if (bh.rs > max_rs) max_rs = bh.rs;
+        }
+        // Scale threshold inversely with rs to avoid too large regions using RK4
+        // For small rs (< 10), use factor 5.0; for large rs (>= 10), use smaller factor
+        double schwarz_threshold_factor = (max_rs < 10.0) ? 5.0 : (10.0 / max_rs * 5.0);
+        if (schwarz_threshold_factor < 2.0) schwarz_threshold_factor = 2.0; // Minimum threshold
+        
         bool use_schwarz_correction = false;
         double schwarz_correction_factor = 1.0;
         
         for (const auto &bh : holes) {
             double dist = (pos - bh.origin).length();
-            if (dist <= bh.rs) {
+            // Use a small safety margin to avoid numerical errors
+            // This matches the check in RK4 section
+            if (dist <= bh.rs * 1.01) {
                 return S_SUCC;
             }
             // Check if within Schwarzschild threshold
@@ -120,6 +137,7 @@ solve_ret ray_iterator::iter(ray *r) {
         // Use modified multi_func that applies Schwarzschild correction
         if (use_schwarz_correction) {
             // Use RK4 method for better accuracy in strong field region
+            const double G = 6.6743;
             // k1
             vec3 accel1(0, 0, 0);
             for (const auto &bh : holes) {
@@ -137,11 +155,12 @@ solve_ret ray_iterator::iter(ray *r) {
                     correction = 1.0 + 3.0 * bh.rs / dist;
                 }
                 
-                accel1 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+                accel1 += (-G * bh.mass * rel) * inv_dist_cubed * correction;
             }
             
-            // k2 (midpoint)
-            point3 pos2 = pos + vel * (epsilon * 0.5);
+            // k2 (midpoint) - use unit vector for position update
+            vec3 vel1_dir = unit_vector(vel);
+            point3 pos2 = pos + vel1_dir * (epsilon * 0.5);
             vec3 vel2 = vel + accel1 * (epsilon * 0.5);
             vel2 = unit_vector(vel2); // Light speed is constant
             
@@ -161,7 +180,7 @@ solve_ret ray_iterator::iter(ray *r) {
                     correction = 1.0 + 3.0 * bh.rs / dist;
                 }
                 
-                accel2 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+                accel2 += (-G * bh.mass * rel) * inv_dist_cubed * correction;
             }
             
             // k3 (midpoint with k2)
@@ -185,7 +204,7 @@ solve_ret ray_iterator::iter(ray *r) {
                     correction = 1.0 + 3.0 * bh.rs / dist;
                 }
                 
-                accel3 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+                accel3 += (-G * bh.mass * rel) * inv_dist_cubed * correction;
             }
             
             // k4 (endpoint with k3)
@@ -209,16 +228,28 @@ solve_ret ray_iterator::iter(ray *r) {
                     correction = 1.0 + 3.0 * bh.rs / dist;
                 }
                 
-                accel4 += (-1 * bh.mass * rel) * inv_dist_cubed * correction;
+                accel4 += (-G * bh.mass * rel) * inv_dist_cubed * correction;
             }
             
-            // RK4 weighted average
+            // RK4 weighted average for acceleration
             vec3 avg_accel = (accel1 + 2.0 * accel2 + 2.0 * accel3 + accel4) / 6.0;
-            point3 new_pos = pos + vel * epsilon;
-            vec3 new_vel = vel + avg_accel * epsilon;
             
-            // Normalize velocity direction (light speed is constant)
+            // Update velocity direction (light speed is constant, only direction changes)
+            vec3 new_vel = vel + avg_accel * epsilon;
             new_vel = unit_vector(new_vel);
+            
+            // Update position using the new velocity direction
+            point3 new_pos = pos + new_vel * epsilon;
+            
+            // Check if we're getting too close to any black hole before updating
+            // This prevents numerical errors from causing premature S_SUCC
+            for (const auto &bh : holes) {
+                double dist = (new_pos - bh.origin).length();
+                // Use a small safety margin to avoid numerical errors
+                if (dist <= bh.rs * 1.01) {
+                    return S_SUCC;
+                }
+            }
             
             // Update state
             m_state[0] = new_pos.x();
@@ -234,13 +265,6 @@ solve_ret ray_iterator::iter(ray *r) {
             if (!freedom && pos.length() > 200) {
                 fprintf(stderr, "freedom denied\n");
                 return S_ERROR;
-            }
-            
-            for (const auto &bh : holes) {
-                double dist = (pos - bh.origin).length();
-                if (dist <= bh.rs) {
-                    return S_SUCC;
-                }
             }
             
             m_r = ray(pos, new_vel);
@@ -267,7 +291,8 @@ solve_ret ray_iterator::iter(ray *r) {
 
         for (const auto &bh : holes) {
             double dist = (pos - bh.origin).length();
-            if (dist <= bh.rs) {
+            // Use a small safety margin to avoid numerical errors
+            if (dist <= bh.rs * 1.01) {
                 return S_SUCC;
             }
         }
