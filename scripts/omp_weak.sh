@@ -1,14 +1,14 @@
 #!/usr/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=40
-#SBATCH --time=0:45:00
+#SBATCH --time=3:00:00
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name liam-omp-weak
 
 FINAL=$1
 EXE=$1/openmp/main
 
-source $FINAL/scripts/niagrasetup
+source $FINAL/scripts/teachsetup
 
 if [ ! -f $EXE ]; then
     echo "Forgot to compile final, was looking for: '$EXE'"
@@ -18,16 +18,25 @@ if [ ! -f $EXE ]; then
 fi
 
 #Pretty grind-y settings.
-args="-i $FINAL/bgedit.jpg -T -s 5"
+# Use -M 2 for mass, other parameters use defaults
+# Ensure dual black hole mode (no -1 parameter)
+args="-i $FINAL/data/squares.jpg -T -s 5 -M 2"
 #Test epsilon starting from 6
 
 function run_program() {
-    export procs=$1
+    cores=$1
     wk=$2
+    LOGFILE="$FINAL/out/omp_weak_${cores}cores_eps${wk}.log"
 
     set -x
-    # Run the program on a fixed work size, then scrape the amount of time output by the tracer.
-    $EXE $args -c $procs -e $2 2>/dev/null | grep "tock" | cut -d' ' -f3 | tail -n1
+    # Run the program and save full output to log file
+    # Extract time from output
+    $EXE $args -c $cores -e $2 2>&1 | tee "$LOGFILE" | grep "tock" | cut -d' ' -f3 | tail -n1
+    
+    # Move output image to out directory if it exists
+    if [ -f "$FINAL/img.jpg" ]; then
+        mv "$FINAL/img.jpg" "$FINAL/out/omp_weak_${cores}cores_eps${wk}.jpg" 2>/dev/null || true
+    fi
 }
 
 function run_with_num_cores() {

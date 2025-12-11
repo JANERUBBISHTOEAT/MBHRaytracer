@@ -3,7 +3,7 @@
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=40
-#SBATCH --time=0:40:00
+#SBATCH --time=3:00:00
 #SBATCH --mail-type=FAIL
 #SBATCH --job-name liam-mpi-strong
 
@@ -11,7 +11,7 @@ FINAL=$1
 EXE=$1/release/main
 cd $SLURM_SUBMIT_DIR
 
-source $FINAL/scripts/niagarasetup
+source $FINAL/scripts/teachsetup
 
 if [ ! -f $EXE ]; then
     echo "Forgot to compile final, was looking for: '$EXE'"

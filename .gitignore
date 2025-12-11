@@ -33,3 +33,6 @@ CMakeUserPresets.json
 
 main
 *.json
+*tif
+*.out
+/out

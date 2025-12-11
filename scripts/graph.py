@@ -27,6 +27,9 @@ speedup_ahmd=[]
 i=0
 with open(file) as f:
     for line in f:
+        # Skip empty lines and lines without |
+        if '|' not in line or line.strip() == '':
+            continue
         if i==0:
             i+=1
             continue;

@@ -10,7 +10,7 @@
 #define DEBUG 0
 #define RELEASE 1
 #ifndef MISSED_RAY_COLOR
-#define MISSED_RAY_COLOR DEBUG
+#define MISSED_RAY_COLOR RELEASE
 #endif
 
 class camera {

@@ -3,12 +3,12 @@
 #SBATCH --ntasks-per-node=40
 #SBATCH --time=3:00:00
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name liam-omp-weak
+#SBATCH --job-name liam-omp-weak2
 
 FINAL=$1
 EXE=$1/openmp/main
 
-source $FINAL/scripts/niagarasetup
+source $FINAL/scripts/teachsetup
 
 if [ ! -f $EXE ]; then
     echo "Forgot to compile final, was looking for: '$EXE'"
@@ -18,16 +18,25 @@ if [ ! -f $EXE ]; then
 fi
 
 #Pretty grind-y settings.
-args="-i $FINAL/data/squares.jpg -T -s 3 -e 0.5"
+# Use -M 2 for mass, other parameters use defaults
+# Ensure dual black hole mode (no -1 parameter)
+args="-i $FINAL/data/squares.jpg -T -s 3 -e 0.5 -M 2"
 #Test image width ending at 900
 
 function run_program() {
-    export procs=$1
+    cores=$1
     wk=$2
+    LOGFILE="$FINAL/out/omp_weak2_${cores}cores_width${wk}.log"
 
     set -x
-    # Run the program on a fixed work size, then scrape the amount of time output by the tracer.
-    $EXE $args -c $procs -W $2 2>/dev/null | grep "tock" | cut -d' ' -f3 | tail -n1
+    # Run the program and save full output to log file
+    # Extract time from output
+    $EXE $args -c $cores -W $2 2>&1 | tee "$LOGFILE" | grep "tock" | cut -d' ' -f3 | tail -n1
+    
+    # Move output image to out directory if it exists
+    if [ -f "$FINAL/img.jpg" ]; then
+        mv "$FINAL/img.jpg" "$FINAL/out/omp_weak2_${cores}cores_width${wk}.jpg" 2>/dev/null || true
+    fi
 }
 
 function run_with_num_cores() {
