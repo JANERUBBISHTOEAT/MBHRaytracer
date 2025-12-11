@@ -36,3 +36,7 @@ main
 *tif
 *.out
 /out
+!data/squares_rt_dual.jpg
+!data/squares_raytraced.jpg
+!data/squares.jpg
+*.zip
