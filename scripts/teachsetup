@@ -1,3 +1,4 @@
 # set of modules needed to compile and run in the Teach Cluster @ SciNet -- UofT
 
-module load StdEnv/2020 gcc/11.3.0 cmake openmpi/4.1.4 gsl/2.7
+module load StdEnv/2020 gcc/11.3.0 cmake openmpi/4.1.4 gsl/2.7 scipy-stack/2023b
+export PYTHONNOUSERSITE=1

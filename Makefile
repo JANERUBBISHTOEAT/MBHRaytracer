@@ -1,6 +1,9 @@
 JLEVEL=-j4
 all: debug release openmp
-CARGS=-DBOOST_ROOT=${HOME}/sysroot  -DCMAKE_MODULE_PATH=${HOME}/sysroot/lib64/cmake/fmt/
+
+# Auto-detect BOOST_ROOT: prefer sysroot if exists, otherwise use system boost
+BOOST_ROOT ?= $(shell if [ -d "${HOME}/sysroot" ]; then echo "${HOME}/sysroot"; else echo "/cvmfs/soft.computecanada.ca/easybuild/software/2020/avx2/Compiler/gcc11/boost/1.80.0"; fi)
+CARGS=-DBOOST_ROOT=$(BOOST_ROOT)  -DCMAKE_MODULE_PATH=$(BOOST_ROOT)/lib64/cmake/fmt/
 
 ### debug: Generate debug version of the code
 debug: dirs
